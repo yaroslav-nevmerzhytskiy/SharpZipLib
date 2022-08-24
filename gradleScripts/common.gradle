@@ -1,0 +1,47 @@
+apply from: 'gradleScripts/secrets.gradle'
+apply from: 'gradleScripts/release.gradle'
+apply from: 'gradleScripts/building.gradle'
+
+preparePackageJson()
+prepareNodePackages()
+
+ext.artifactory_user = artifactoryUser()
+ext.artifactory_password = artifactoryPassword()
+println "Artifactory User: $artifactory_user"
+
+ext.mavenDefaultRepos = [
+    {
+        url "${repositoryHost}libs-release"
+        credentials {
+            username = artifactory_user
+            password = artifactory_password
+        }
+    },
+    {
+        url "${repositoryHost}libs-snapshot"
+        credentials {
+            username = artifactory_user
+            password = artifactory_password
+        }
+    }
+]     
+
+def artifactoryUser() {
+    if (secrets.artifactoryUser != null) {
+        return secrets.artifactoryUser
+    }
+    if (System.env.ARTIFACTORY_USER != null) {
+        return System.env.ARTIFACTORY_USER
+    }
+    return project.properties['artifactoryUser']
+}
+
+def artifactoryPassword() {
+    if (secrets.artifactoryPassword != null) {
+        return secrets.artifactoryPassword
+    }
+    if (System.env.ARTIFACTORY_PASSWORD != null) {
+        return System.env.ARTIFACTORY_PASSWORD
+    }
+    return project.properties['artifactoryPassword']
+}

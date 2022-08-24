@@ -1,0 +1,58 @@
+import org.apache.maven.artifact.versioning.ComparableVersion
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    
+    dependencies {
+        classpath "org.apache.maven:maven-artifact:3.6.3"
+    }
+}
+
+def installDotnetDlls(proj, libsDir) {
+    copy {
+        for (def resolvedDllArtifact in getResolvedDllDependencies(proj)) {
+            def dep = resolvedDllArtifact.dep
+            from dep.file
+            into libsDir
+            rename dep.file.name, dep.name + '.' + dep.extension
+        }
+    }
+}
+
+def getResolvedDllDependencies(proj) {
+    List resolvedDependencies = []
+    def dependencyVersions = buildDependenciesList(proj)
+    // Sort versions from lower to higher regardless of artifact name
+    dependencyVersions.sort() { a, b -> 
+        return a.version.compareTo(b.version)
+    }
+    
+    return dependencyVersions
+}
+
+def buildDependenciesList(proj) {
+    def dependencyVersions = []
+
+    proj.configurations.each { configuration ->
+        configuration.resolvedConfiguration.resolvedArtifacts.each { 
+            if (it.extension == 'dll') {
+                def moduleVersion = it.moduleVersion.toString()
+                def versionStr = moduleVersion.substring(moduleVersion.lastIndexOf(':') + 1)
+                def version = new ComparableVersion(versionStr)
+                
+                dependencyVersions.add([
+                    dep: it,
+                    version: version
+                ])
+            }
+        }
+    }
+
+    return dependencyVersions
+}
+
+ext {
+    installDotnetDlls = this.&installDotnetDlls
+}

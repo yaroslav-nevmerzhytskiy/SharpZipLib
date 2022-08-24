@@ -1,0 +1,21 @@
+{
+    "name": "SharpZipLib",
+    "version": "1.0.0",
+    "description": "",
+    "scripts": {
+        "release": "standard-version -t \"\""
+    },
+    "husky": {
+        "hooks": {
+            "commit-msg": "sh ./githooks/pre-commit.sh && commitlint --env HUSKY_GIT_PARAMS"
+        }
+    },
+    "keywords": [],
+    "author": "core-tech-dev",
+    "devDependencies": {
+        "@commitlint/config-conventional": "^8.2.0",
+        "commitlint": "^8.2.0",
+        "husky": "^3.1.0",
+        "standard-version": "^7.0.1"
+    }
+}

@@ -1,0 +1,165 @@
+apply from: 'gradleScripts/utils/git_utils.gradle'
+apply from: 'gradleScripts/utils/npm.gradle'
+
+// Set release version string
+if (project.hasProperty('customBuildVersion') && customBuildVersion?.trim()) {
+    println "Custom build version: " + customBuildVersion
+    ext.buildVersion = customBuildVersion
+    ext.newReleaseVersion = customBuildVersion
+    ext.newHotfixVersion = customBuildVersion
+} else {
+    println 'No custom build version found'
+    ext.buildVersion = resolveVersion()
+    ext.newReleaseVersion = resolveNewReleaseVersion()
+    ext.newHotfixVersion = resolveNewHotfixVersion()
+}
+
+ext.shouldValidateRepo = project.hasProperty('shouldValidateRepo') && shouldValidateRepo == 'true'
+println "ShouldValidateRepo: " + ext.shouldValidateRepo
+
+def resolveVersion() {
+    def tag = latestTag
+
+    if(isDevelop) {
+        tag = bumpSnapshotVersion(tag)
+    }
+    else if(!isMaster) {
+        def branch = branchName.replaceAll(/\//,"_")
+        tag = branch
+    }
+
+    println "Snapshot Version " + tag
+
+    return tag
+}
+
+def resolveNewReleaseVersion() {
+    def tag = latestTag
+
+    tag = bumpVersion(tag, false)
+
+    println "Release Version " + tag
+
+    return tag
+}
+
+def resolveNewHotfixVersion() {
+    def tag = latestTag
+
+    tag = bumpVersion(tag, true)
+
+    println "Hotfix Version " + tag
+
+    return tag
+}
+
+def bumpSnapshotVersion(String version)
+{
+    return bumpVersion(version, false) + '-SNAPSHOT'
+}
+
+def bumpVersion(String version, boolean isPatch) {
+    if (version == '' || version == null) {
+        version = '0.0.0'
+    }
+
+    version = sanitiseVersion(version);
+
+    def tokens = version.tokenize('//.')
+    def minorNumber = tokens[1].toInteger()
+    def majorNumber = tokens[0].toInteger()
+
+    if (isPatch) {
+        def patchVersion = 1
+        if (tokens[2]) {
+            patchVersion = tokens[2].toInteger() + 1
+        }
+        return majorNumber.toString() + '.' + minorNumber.toString() + '.' + patchVersion
+    }
+    def newMinor = (minorNumber + 1) % 1000
+    if(newMinor < minorNumber) {
+        majorNumber++
+    }
+    return majorNumber.toString() + '.' + newMinor.toString() + '.0'
+}
+
+def sanitiseVersion(String version) {
+    return version.replaceAll("v", "")
+}
+
+task release {
+    doLast {
+        cutRelease(newReleaseVersion, shouldValidateRepo)
+        standardVersion(newReleaseVersion)
+    }
+}
+
+task finishRelease {
+    doLast {
+        finishRelease(newReleaseVersion)
+    }
+}
+
+task hotfix {
+    doLast {
+        hotfix(newHotfixVersion)
+        standardVersion(newHotfixVersion)
+    }
+}
+
+def publishingRepository(String branchName, String artifactoryRepo) {
+    if (nameMatches(branchName, /^(backport\/.*|master$)/)) {
+        return "${repositoryHost}${artifactoryRepo}-release-local"
+    } 
+    if (nameMatches(branchName, /^develop|release\/.*|hotfix\/.*|feature\/.*$/)) {
+        return "${repositoryHost}${artifactoryRepo}-snapshot-local"
+    }
+    throw new GradleException("No matching publishing repository for non-conforming gitflow branch: '$branchName'")
+}
+
+def ticketNumber(String branchName) {
+    def matcher = branchName =~ /^feature\/([A-Z]{2,}-\d+)/
+    if (matcher.asBoolean()) {
+        return matcher[0][1]
+    }
+    return null
+}
+
+def publishingVersion(String branchName, String latestTag) {
+    if(nameMatches(branchName, /^develop$/)) {
+        return bumpVersion(latestTag, false) + '-SNAPSHOT'
+    }
+    else if(nameMatches(branchName, /^master$/)) {
+        return latestTag
+    }
+    else {
+        def ticket = ticketNumber(branchName)
+        if (ticket) {
+            return bumpVersion(latestTag, false) + "-${ticket}-SNAPSHOT"
+        }
+
+        def matcher = branchName =~ /^(hotfix|release)\/(.+)/
+        if(matcher.asBoolean()) {
+            return matcher[0][2] + '-SNAPSHOT'
+        }
+
+        matcher = branchName =~ /^(backport)\/(.+)/
+        if(matcher.asBoolean()) {
+            return matcher[0][2]
+        }
+
+        throw new GradleException("No matching publishing version for non-conforming gitflow branch: '$branchName'.")
+    }
+}
+
+private boolean nameMatches(String name, String regex) {
+    return name.replaceAll("\\s","") ==~ regex
+}
+
+ext {
+    repositoryHost = "https://artifactory.madness.games/artifactory/"
+    publishingRepository = { name -> this.publishingRepository(name, "libs") }
+    pluginsPublishingRepository = { name -> this.publishingRepository(name, "plugins") }
+    publishingVersion = { branchName, latestTag -> this.publishingVersion(branchName, latestTag) }
+    ticketNumber = { branchName -> this.ticketNumber(branchName) }
+}

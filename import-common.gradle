@@ -1,0 +1,18 @@
+buildscript {
+    repositories {
+        maven {
+            url 'https://artifactory.madness.games/artifactory/plugins-release'
+            credentials {
+                username = System.env.ARTIFACTORY_USER
+                password = System.env.ARTIFACTORY_PASSWORD
+            }
+        }
+    }
+
+    dependencies {
+        classpath 'com.productmadness:core-tech-common-scripts:0.+'
+        ant.unzip src: configurations.classpath.singleFile, dest: './'
+    }
+}
+
+apply from: 'gradleScripts/common.gradle'

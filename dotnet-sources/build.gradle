@@ -1,0 +1,91 @@
+import groovy.io.FileType
+
+plugins {
+  id 'com.ullink.msbuild' version '3.8'
+  id 'com.ullink.nuget' version '2.19'
+  id 'com.ullink.nunit' version '2.0'
+}
+
+def solutionName = 'ICSharpCode.SharpZipLib'
+def artifactName = 'ICSharpCode.SharpZipLib'
+def libsDir = 'libs'
+def buildDir = pathCombine('build', 'msbuild')
+def outputDir = pathCombine(buildDir, 'bin')
+def featureClassifier = null
+
+msbuild {
+    solutionFile = "${solutionName}.sln"
+    targets = ['Rebuild']
+    destinationDir = outputDir
+    generateDoc = false
+    configuration = 'Release'
+    version = '14.0'
+    ext["flp1"] = "LogFile=" + file("${project.name}.errors.log").path + ";ErrorsOnly;Verbosity=diag"
+}
+
+publishing {
+    repositories {
+        maven {
+            url publishingRepository
+            credentials {
+                username = artifactory_user
+                password = artifactory_password
+            }
+        }
+    }
+
+    publications {
+        "${solutionName}"(MavenPublication) {
+            pom.withXml {
+                def parent = asNode()
+                def node = parent.remove(parent.get("packaging"))
+                def newNode = new Node(parent, "packaging", "dll")
+
+                def dependenciesNode = asNode().appendNode('dependencies')
+                project.configurations.dll.resolvedConfiguration.getFirstLevelModuleDependencies().each {
+                  def dep = it.module.id
+                  def dependencyNode = dependenciesNode.appendNode('dependency')
+                  dependencyNode.appendNode('groupId', dep.group)
+                  dependencyNode.appendNode('artifactId', dep.name)
+                  dependencyNode.appendNode('version', dep.version)
+                  dependencyNode.appendNode('type', 'dll')
+                }
+            }
+
+            artifact (file(pathCombine(outputDir, "${artifactName}.dll")).path) {
+                artifactId = artifactName
+                extension = 'dll'
+            }
+
+            version publishingVersion
+        }
+    }
+}
+
+configurations {
+    dll
+}
+
+task installDll(type: Copy) {
+    dependsOn 'nugetRestore'
+    project.configurations.dll.resolvedConfiguration.resolvedArtifacts.each {
+        if(it.extension == 'dll') {
+            from it.file
+            into libsDir
+            rename it.file.name, it.name + '.' + it.extension
+        }
+    }
+}
+
+msbuild.dependsOn(installDll)
+
+task renameIntermediates {
+    dependsOn 'msbuild'
+    doLast {
+        file(buildDir).eachFile (FileType.ANY) { file ->
+            file.renameTo(file.path.replaceAll("\\\\", "/"))
+        }
+    }
+}
+
+nunit.dependsOn('renameIntermediates')

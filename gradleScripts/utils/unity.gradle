@@ -1,0 +1,47 @@
+apply from: 'gradleScripts/utils/files.gradle'
+
+def rootApplication = "/Applications"
+def unityBinary = pathCombine("Unity.app", "Contents", "MacOS", "Unity")
+def ProjectVersionFileName = "ProjectVersion.txt"
+
+def sampleAppNames = ["sample-app", "sample-application"]
+def sampleAppFolder = null
+def unityHome = null
+
+// Check if we have a sample app folder
+sampleAppNames.find {
+    if (new File(it).exists()) {
+        sampleAppFolder = it
+        return true
+    }
+    return false
+}
+
+if (sampleAppFolder != null) {
+    // We do have a sample app. Look for unity version in project version file
+    def versionFile = searchForFile(sampleAppFolder, ProjectVersionFileName)
+    if (versionFile != null) {
+        def unityVersion = getUnityVersion(versionFile)
+        unityHome = pathCombine(rootApplication, "Unity $unityVersion", unityBinary)
+        println "Sample app $ProjectVersionFileName found, generated unity path: $unityHome"
+    } 
+    else {
+        println "Sample app $ProjectVersionFileName not found"
+    }
+}
+
+def getUnityVersion(versionFile) {
+    def props = new Properties()
+    file(versionFile).withInputStream { props.load(it) }
+    return props.getProperty("m_EditorVersion")
+}
+
+if (unityHome != null && new File(unityHome).exists()) {
+    ext.UnityHome = unityHome
+}
+else {
+    // Fallback to System.env.UNITY_HOME if generated path is not valid
+    ext.UnityHome = System.env.UNITY_HOME
+}
+
+println "UnityHome is set to $UnityHome"

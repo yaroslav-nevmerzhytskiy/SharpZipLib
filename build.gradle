@@ -1,0 +1,103 @@
+apply from: 'import-common.gradle'
+
+buildscript {
+  repositories {
+    maven {
+      url "https://jfrog.madness.games/artifactory/plugins-release"
+      credentials {
+        username System.env.ARTIFACTORY_USER
+        password System.env.ARTIFACTORY_PASSWORD
+      }
+    }
+  }
+
+  dependencies {
+    classpath group: 'com.productmadness', name: 'ci-plugin-app', version: '0.75.0'
+    classpath group: 'com.productmadness', name: 'ci-plugin-dependencies', version: '0.63.0'
+    classpath group: 'com.productmadness', name: 'ci-plugin-versioning', version: '1.33.0'
+    classpath group: 'com.productmadness', name: 'ci-plugin-git', version: '1.34.0'
+  }
+}
+
+apply plugin: 'com.productmadness.ci-plugin-app'
+apply plugin: 'com.productmadness.ci-plugin-dependencies'
+apply plugin: 'com.productmadness.ci-plugin-versioning'
+apply plugin: 'com.productmadness.ci-plugin-git'
+
+repositories {
+  maven {
+    url "https://jfrog.madness.games/artifactory/libs-release"
+      credentials {
+        username System.env.ARTIFACTORY_USER
+        password System.env.ARTIFACTORY_PASSWORD
+      }
+  }
+}
+
+ext.publishingRepository = "https://jfrog.madness.games/artifactory/libs-release"
+ext.publishingVersion = "1.3.3"
+ext.artifactName = 'ICSharpCode.SharpZipLib'
+
+println "Publishing Info - repo: ${publishingRepository} version: ${publishingVersion}"
+
+def isMaster = true
+
+dependenciesPublishingConfiguration {
+  repositoryUrl = "https://jfrog.madness.games/artifactory/libs-release"
+}
+
+subprojects {
+    apply plugin: 'maven-publish'
+
+    buildscript {
+        repositories {
+            google()
+            maven {
+                url "https://artifactory.madness.games/artifactory/plugins-release"
+                credentials {
+                    username artifactory_user
+                    password artifactory_password
+                }
+            }
+        }
+    }
+
+    publishing {
+        repositories {
+            maven {
+                url publishingRepository
+                credentials {
+                    username = artifactory_user
+                    password = artifactory_password
+                }
+            }
+        }
+    }
+
+    mavenDefaultRepos.each { repo ->
+        repositories.maven repo
+    }
+
+    repositories {
+        mavenLocal()
+
+        maven {
+          url "https://jfrog.madness.games/artifactory/libs-release"
+            credentials {
+              username = artifactory_user
+              password = artifactory_password
+            }
+        }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
+
+
+task buildUnityPlugin(type: GradleBuild, dependsOn: ['clean', 'dotnet-sources:msbuild']) {
+    tasks = [
+            'dotnet-sources:publishToMavenLocal'
+    ]
+}

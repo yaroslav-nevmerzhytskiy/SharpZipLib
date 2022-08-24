@@ -1,0 +1,106 @@
+def standardVersion(String version) {
+    exec {
+        executable "npm"
+        args "i"
+    }
+    exec {
+        executable "npm"
+        args = ['run', 'release', '--', '--release-as', version]
+    }
+}
+
+def findGradleProperty(String property, String defaultValue) {
+    def value = project.findProperty(property)
+    if (!value) {
+        println "Property $property not found in gradle.properties. Using default value $defaultValue."
+        value = defaultValue;
+    }
+    return value
+}
+
+def preparePackageJson() {
+    println 'Checking for existing package.json...'
+
+    if (!file('package.json').exists()) {
+        println 'package.json does not exist. Generating...'
+        def artifactId = findGradleProperty('artifactId', 'unnamed')
+        def author = findGradleProperty('author', 'core-tech-dev')
+        new File(projectDir, "package.json").text = """
+            {
+                "name": "${artifactId}",
+                "version": "1.0.0",
+                "description": "",
+                "scripts": {
+                    "release": "standard-version -t \\"\\""
+                },
+                "husky": {
+                    "hooks": {
+                        "commit-msg": "sh ./githooks/pre-commit.sh && commitlint --env HUSKY_GIT_PARAMS"
+                    }
+                },
+                "keywords": [],
+                "author": "${author}",
+                "devDependencies": {
+                    "@commitlint/config-conventional": "^8.2.0",
+                    "commitlint": "^8.2.0",
+                    "husky": "^3.1.0",
+                    "standard-version": "^7.0.1"
+                }
+            }
+        """
+    } else {
+        println 'package.json already exists.'
+    }
+}
+
+def executeNpmCommand(String... args) {
+    def npm = ['npm']
+    if (System.properties['os.name'].toLowerCase().contains('windows')) {
+        npm = ['npm.cmd']
+    }
+    def commands = npm.plus(args).flatten()
+
+    def stdout = new ByteArrayOutputStream()
+    def stderr = new ByteArrayOutputStream()
+
+    def error = ""
+    try {
+        project.exec {
+            commandLine commands
+            standardOutput = stdout
+            errorOutput = stderr
+            ignoreExitValue true
+            environment npm_config_loglevel: 'error'
+        }
+    } catch (e) {
+        error = e.message
+    }
+
+    return [error, stdout.toString("UTF-8"), stderr.toString("UTF-8")]
+}
+
+def assertNPMExist() {
+    def (error, stdout, stderr) = executeNpmCommand('--version')
+    if (error) {
+        throw new GradleException("$error\n$stdout\n$stderr\nThis is likely due to missing Nodejs installation, please install it from https://nodejs.org/en/download/. This is to install commitlint through npm")
+    }
+}
+
+def installPackages() {
+    def (error, stdout, stderr) = executeNpmCommand('i')
+    if (error || stderr) {
+        throw new GradleException("Failed to execute npm command: $error\n$stdout\n$stderr")
+    }
+    println stdout
+}
+
+def prepareNodePackages() {
+    assertNPMExist()
+    installPackages()
+}
+
+ext {
+    standardVersion = { version -> this.standardVersion(version) }
+    prepareNodePackages = { this.prepareNodePackages() }
+    preparePackageJson = { this.preparePackageJson() }
+}

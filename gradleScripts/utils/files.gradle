@@ -1,0 +1,107 @@
+import java.util.regex.Pattern
+import groovy.io.FileType
+
+def patchSymbolsInFiles(List files, String find, String replace) {
+    def funcs = [
+        patch: {
+            files.each {
+                ant.replace(file: (String)it, token: find, value: replace)     
+            }  
+        },
+        reverse: { 
+            files.each {
+                ant.replace(file: (String)it, token: replace, value: find)
+            }
+        }
+    ]
+    return funcs
+}
+
+
+def patchSymbolsInFilesTasks(String taskName, List files, String find, String replace) {
+    def escapedTaskName = escapeTaskName(taskName)
+    def patchTaskName = "${escapedTaskName}Patch"
+    if (tasks.findByName(patchTaskName)) {
+        return null;
+    }
+    return [
+        patch: task(patchTaskName) {
+            doLast {
+                patchSymbolsInFiles(files, find, replace).patch()
+            }
+        },
+        reverse: task("${escapedTaskName}Reverse") {
+            doLast {
+                patchSymbolsInFiles(files, find, replace).reverse()
+            }
+        }
+    ]
+}
+
+def escapeTaskName(String taskName) {
+    def escapedTaskName = taskName
+    ["/", "\\\\", ":", "<", ">", "\\?", "\\*","\\|"].each {
+      escapedTaskName = escapedTaskName.replaceAll(it, "-")
+    }
+    return escapedTaskName
+}
+
+def patchSymbolsInFilesForTasks(List files, String find, String replace, List tasks) {
+    tasks.each {
+        def task = it
+        def patchTasks = patchSymbolsInFilesTasks(task.path, files, find, replace)
+        if (!patchTasks) {
+            return
+        }
+        task.dependsOn(patchTasks.patch)
+        task.finalizedBy(patchTasks.reverse)
+    }
+}
+
+def pathCombine(Object... files) {
+    return files.join(File.separator)
+}
+
+def searchForFile(root, fileName) {
+    def rootFile = root
+    if (!(root instanceof File)) {
+        rootFile = new File(root)
+    }
+
+    if (!rootFile.exists() || rootFile.isFile()) {
+        return null
+    }
+
+    def file = new File(pathCombine(root, fileName))
+    if (file.exists()) {
+        // Found exact match, return
+        return file
+    }
+    else {
+        // Exact match not found, try matching in case fileName is a regex
+        def regexResult = null
+        rootFile.eachFileMatch(FileType.FILES, ~"${fileName}", {
+            // Return the last match. It would be random as we don't know how 
+            // Groovy sorts the list
+            regexResult = it
+        })
+        if (regexResult != null)
+            return regexResult
+    }
+
+    def result = null
+    rootFile.eachFile {
+        def search = searchForFile(it, fileName)
+        if (search != null) {
+            result = search
+        }
+    }
+    return result
+}
+
+ext {
+    patchSymbolsInFiles = { files, find, replace -> this.patchSymbolsInFiles(files, find, replace) }
+    patchSymbolsInFilesForTasks = { files, find, replace, task -> this.patchSymbolsInFilesForTasks(files, find, replace, task) }
+    pathCombine = { ...files -> this.pathCombine(files) }
+    searchForFile = { root, fileName -> this.searchForFile(root, fileName)}
+}

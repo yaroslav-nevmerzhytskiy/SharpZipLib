@@ -1,0 +1,72 @@
+import java.lang.ProcessBuilder
+import java.util.*
+import java.util.concurrent.TimeUnit
+
+def execCommand(String cmdText, long timeOut, TimeUnit timeUnit)
+{
+    String newLineCharacter = System.getProperty("line.separator");
+    def stdOut = new StringBuilder()
+    def stdErr = new StringBuilder()
+    Process process = null
+    BufferedReader brStdOut
+    BufferedReader brStdErr
+
+    try 
+    {
+        process = cmdText.execute()
+        brStdOut = new BufferedReader(new InputStreamReader(process.getInputStream()))
+        brStdErr = new BufferedReader(new InputStreamReader(process.getErrorStream()))
+
+        String line = null;
+
+        while (process.isAlive()) 
+        {
+            while ((line = brStdOut.readLine()) != null) 
+            {
+                stdOut.append(line + newLineCharacter)
+            }
+
+            while ((line = brStdErr.readLine()) != null) 
+            {
+                stdErr.append(line + newLineCharacter)
+            }
+
+            process.waitFor(timeOut, timeUnit)
+        }
+
+        while ((line = brStdOut.readLine()) != null)
+        {
+            stdOut.append(line + newLineCharacter);
+        }
+
+        while ((line = brStdErr.readLine()) != null) 
+        {
+            stdErr.append(line + newLineCharacter)
+        }
+
+        if (brStdOut != null) 
+        {
+            brStdOut.close()
+        }
+
+        if (brStdErr != null) 
+        {
+            brStdErr.close()
+        }
+
+        if (process.exitValue() != 0) 
+        {
+            throw new GradleException("process.exitValue=${process.exitValue()}, stdErr=${stdErr}")
+        }
+    }
+    catch(Exception ex)
+    {
+        throw new GradleException(stdErr.toString(), ex);
+    }
+
+    return stdOut.toString()
+}
+
+ext {
+    execCommand = { cmdText -> this.execCommand(cmdText, 5, TimeUnit.SECONDS) }
+}
